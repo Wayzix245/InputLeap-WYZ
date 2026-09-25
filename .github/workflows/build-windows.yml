@@ -1,7 +1,7 @@
 name: Build Windows MinimalRelease
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
   push:
     branches: [ minimal-windows ]
 
