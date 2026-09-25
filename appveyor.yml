@@ -1,0 +1,98 @@
+version: 1.0.{build}
+
+image: Visual Studio 2022
+platform: x64
+configuration: Release
+
+branches:
+  only:
+    - main
+
+clone_depth: 1
+skip_tags: true
+
+environment:
+  QT_ROOT: C:\Qt\6.9.3\msvc2022_64
+  VCPKG_ROOT: C:\Tools\vcpkg
+  VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg-cache
+
+cache:
+  - C:\vcpkg-cache -> appveyor.yml
+
+install:
+  - ps: |
+      $ErrorActionPreference = 'Stop'
+      if (-not (Test-Path -LiteralPath "$env:QT_ROOT\bin\windeployqt.exe")) {
+          throw "Qt was not found at $env:QT_ROOT"
+      }
+      if (-not (Test-Path -LiteralPath "$env:VCPKG_ROOT\vcpkg.exe")) {
+          throw "vcpkg was not found at $env:VCPKG_ROOT"
+      }
+      New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+      & "$env:VCPKG_ROOT\vcpkg.exe" install openssl:x64-windows-static-md
+      if ($LASTEXITCODE -ne 0) { throw "vcpkg failed with exit code $LASTEXITCODE" }
+
+build_script:
+  - ps: |
+      $ErrorActionPreference = 'Stop'
+      $configureArguments = @(
+          '--preset', 'MinimalRelease',
+          "-DCMAKE_PREFIX_PATH=$($env:QT_ROOT -replace '\\', '/')",
+          "-DCMAKE_TOOLCHAIN_FILE=$($env:VCPKG_ROOT -replace '\\', '/')/scripts/buildsystems/vcpkg.cmake",
+          '-DVCPKG_TARGET_TRIPLET=x64-windows-static-md',
+          "-DOPENSSL_ROOT_DIR=$($env:VCPKG_ROOT -replace '\\', '/')/installed/x64-windows-static-md",
+          '-DINPUTLEAP_BUILD_TESTS=OFF',
+          '-DINPUTLEAP_MINIMAL_BUILD=ON',
+          '-DINPUTLEAP_ENABLE_IPO=ON'
+      )
+      & cmake @configureArguments
+      if ($LASTEXITCODE -ne 0) { throw "CMake configuration failed with exit code $LASTEXITCODE" }
+      & cmake --build --preset MinimalRelease --parallel
+      if ($LASTEXITCODE -ne 0) { throw "CMake build failed with exit code $LASTEXITCODE" }
+
+after_build:
+  - ps: |
+      $ErrorActionPreference = 'Stop'
+      $package = Join-Path $env:APPVEYOR_BUILD_FOLDER 'build\MinimalRelease\package'
+      $stage = Join-Path $env:APPVEYOR_BUILD_FOLDER 'build\MinimalRelease\artifact'
+      $archive = Join-Path $env:APPVEYOR_BUILD_FOLDER 'InputLeap-MinimalRelease-Windows-x64.zip'
+      if (-not (Test-Path -LiteralPath $package)) { throw "Install directory not found: $package" }
+      New-Item -ItemType Directory -Force -Path $stage | Out-Null
+      Copy-Item -Path (Join-Path $package '*') -Destination $stage -Recurse -Force
+
+      $requiredExecutables = @('input-leap.exe', 'input-leapd.exe', 'input-leaps.exe', 'input-leapc.exe')
+      foreach ($name in $requiredExecutables) {
+          if (-not (Test-Path -LiteralPath (Join-Path $stage $name))) {
+              throw "Required executable is missing: $name"
+          }
+      }
+
+      & "$env:QT_ROOT\bin\windeployqt.exe" --release --no-translations --no-system-d3d-compiler --no-opengl-sw (Join-Path $stage 'input-leap.exe')
+      if ($LASTEXITCODE -ne 0) { throw "windeployqt failed with exit code $LASTEXITCODE" }
+
+      Get-ChildItem -LiteralPath $stage -Recurse -File -Include *.pdb,*.lib,*.exp,*.ilk | Remove-Item -Force
+      Get-ChildItem -LiteralPath $stage -Recurse -Directory -Filter translations | Remove-Item -Recurse -Force
+
+      Set-Content -LiteralPath (Join-Path $stage 'install-service.cmd') -Encoding Ascii -Value @(
+          '@echo off',
+          'setlocal',
+          'net session >nul 2>&1',
+          'if errorlevel 1 (echo ERROR: Run this file as Administrator.& pause & exit /b 1)',
+          '"%~dp0input-leapd.exe" /install',
+          'if errorlevel 1 (echo ERROR: Input Leap service installation failed.& pause & exit /b 1)',
+          'sc start InputLeap',
+          'if errorlevel 1 (echo ERROR: Input Leap service could not be started.& pause & exit /b 1)',
+          'echo Input Leap service installed and started successfully.',
+          'pause',
+          'exit /b 0'
+      )
+
+      if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive -Force }
+      Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -CompressionLevel Optimal
+
+test: off
+deploy: off
+
+artifacts:
+  - path: InputLeap-MinimalRelease-Windows-x64.zip
+    name: InputLeap-MinimalRelease-Windows-x64
