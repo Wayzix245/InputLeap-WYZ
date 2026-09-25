@@ -1,0 +1,49 @@
+# sample InputLeap configuration file
+#
+# comments begin with the # character and continue to the end of
+# line.  comments may appear anywhere the syntax permits.
+
+# This example uses 3 computers. A laptop and two desktops (one a mac)
+# They are arranged in the following configuration with Desktop1 acting as the server
+# Desktop 2 has 3 screens arranged around desktop1
+#
+#            +--------+ +---------+
+#            |Desktop2| |Desktop2 |
+#            |        | |         |
+#            +--------+ +---------+
+# +-------+  +--------+ +---------+
+# |Laptop |  |Desktop1| |Desktop2 |
+# |       |  |        | |         |
+# +-------+  +--------+ +---------+
+#
+# The laptop comes and goes but that doesn't really affect this configuration
+
+# The screens section is for the logical or short name of the computers
+section: screens
+	# three computers that are logically named:  desktop1, desktop2, and laptop
+	desktop1:
+	desktop2:
+	laptop:
+end
+
+section: links
+	desktop1:
+		top = desktop2 (0, 50)
+		right = desktop2 (50, 100)
+		left = laptop
+
+	desktop2:
+		bottom (0, 50) = desktop1
+		left (50, 100) = desktop1
+
+	laptop:
+		right = desktop1
+end
+
+# The aliases section is to map the full names of the computers to their logical names used in the screens section
+# One way to find the actual name of a computer is to run hostname from a command window
+section: aliases
+	# Laptop is actually known as John-Smiths-MacBook-3.local
+	John-Smiths-MacBook-3.local:
+		laptop
+end

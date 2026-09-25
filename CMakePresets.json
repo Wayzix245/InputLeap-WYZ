@@ -1,0 +1,27 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "MinimalRelease",
+      "displayName": "Windows x64 Minimal Release",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/MinimalRelease",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/MinimalRelease/package",
+        "INPUTLEAP_BUILD_TESTS": "OFF",
+        "INPUTLEAP_MINIMAL_BUILD": "ON",
+        "INPUTLEAP_ENABLE_IPO": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "MinimalRelease",
+      "configurePreset": "MinimalRelease",
+      "configuration": "Release",
+      "targets": ["install"]
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+name: Build Windows MinimalRelease
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ minimal-windows ]
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-x64:
+    runs-on: windows-2022
+    env:
+      QT_VERSION: 6.6.3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2019_64
+          cache: true
+
+      - name: Cache vcpkg OpenSSL
+        id: cache-openssl
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-openssl-x64-windows-static-md-${{ runner.os }}
+
+      - name: Provision OpenSSL for MSVC x64
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & 'C:\vcpkg\vcpkg.exe' install openssl:x64-windows-static-md
+
+      - name: Configure MinimalRelease
+        shell: pwsh
+        run: >-
+          cmake --preset MinimalRelease
+          -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+          -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
+          -DOPENSSL_ROOT_DIR="C:/vcpkg/installed/x64-windows-static-md"
+
+      - name: Build and install
+        run: cmake --build --preset MinimalRelease --parallel
+
+      - name: Assemble test ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Join-Path $PWD 'build\MinimalRelease\package'
+          Get-ChildItem -LiteralPath $package -Recurse -Include *.pdb,*.lib,*.exp | Remove-Item -Force
+          $gui = Get-ChildItem -LiteralPath $package -Recurse -Filter input-leap.exe | Select-Object -First 1
+          if (-not $gui) { throw 'input-leap.exe was not installed' }
+          & (Join-Path $env:QT_ROOT_DIR 'bin\windeployqt.exe') --release --no-translations --no-system-d3d-compiler --no-opengl-sw $gui.FullName
+          Get-ChildItem -LiteralPath $package -Recurse -Directory -Filter translations | Remove-Item -Recurse -Force
+          $bin = $gui.DirectoryName
+          Set-Content -LiteralPath (Join-Path $bin 'install-service.cmd') -Encoding Ascii -Value '@echo off', 'setlocal', 'net session >nul 2>&1', 'if errorlevel 1 (echo ERROR: Run this file as Administrator.& pause & exit /b 1)', '"%~dp0input-leapd.exe" /install', 'if errorlevel 1 (echo ERROR: Input Leap service installation failed.& pause & exit /b 1)', 'sc start InputLeap', 'if errorlevel 1 (echo ERROR: Input Leap service could not be started.& pause & exit /b 1)', 'echo Input Leap service installed and started successfully.', 'pause', 'exit /b 0'
+          Set-Content -LiteralPath (Join-Path $bin 'uninstall-service.cmd') -Encoding Ascii -Value '@echo off', 'net session >nul 2>&1 || (echo Run this file as Administrator.& pause & exit /b 1)', '"%~dp0input-leapd.exe" /uninstall', 'pause'
+          Compress-Archive -Path (Join-Path $package '*') -DestinationPath InputLeap-MinimalRelease-Windows-x64.zip
+
+      - name: Upload ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: InputLeap-MinimalRelease-Windows-x64
+          path: InputLeap-MinimalRelease-Windows-x64.zip
+          if-no-files-found: error
+          compression-level: 9
