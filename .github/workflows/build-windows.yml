@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -29,7 +29,7 @@ jobs:
 
       - name: Cache vcpkg OpenSSL
         id: cache-openssl
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: C:\vcpkg\installed
           key: vcpkg-openssl-x64-windows-static-md-${{ runner.os }}
@@ -68,7 +68,7 @@ jobs:
           Compress-Archive -Path (Join-Path $package '*') -DestinationPath InputLeap-MinimalRelease-Windows-x64.zip
 
       - name: Upload ZIP
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: InputLeap-MinimalRelease-Windows-x64
           path: InputLeap-MinimalRelease-Windows-x64.zip
